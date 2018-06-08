@@ -1,0 +1,11 @@
+[package]
+name = "p2pspider"
+version = "0.1.0"
+authors = ["liyiheng <liyihenggnehiyil@gmail.com>"]
+
+[dependencies]
+rand = "0.5"
+bencode = "0.1.16"
+byteorder = "1.2.3"
+sha1 = "0.6.0"
+
