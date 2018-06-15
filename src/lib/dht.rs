@@ -3,7 +3,6 @@ extern crate byteorder;
 extern crate rand;
 extern crate sha1;
 
-
 use rand::prelude::*;
 use self::bencode::{Bencode, FromBencode, ToBencode};
 use self::bencode::util::ByteString;
@@ -18,7 +17,6 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-
 const BOOTSTRAP_NODES: [&str; 3] = [
     "router.bittorrent.com:6881",
     "dht.transmissionbt.com:6881",
@@ -31,7 +29,7 @@ pub struct Node {
 }
 
 #[derive(Clone)]
-struct Announce {
+pub struct Announce {
     raw: BTreeMap<ByteString, Bencode>,
     from: net::SocketAddr,
     peer: net::SocketAddr,
@@ -222,7 +220,7 @@ impl RustDHT {
 }
 
 pub fn new_dht() -> RustDHT {
-    let mut socket = match net::UdpSocket::bind("127.0.0.1:34254") {
+    let mut socket = match net::UdpSocket::bind("0.0.0.0:34254") {
         Ok(s) => s,
         Err(e) => panic!("couldn't bind socket: {}", e)
     };
@@ -241,17 +239,17 @@ pub fn new_dht() -> RustDHT {
 }
 
 impl RustDHT {
-    pub fn start(self) {
+    pub fn start(self) -> (Vec<thread::JoinHandle<()>>, mpsc::Receiver<Announce>) {
         let (sender_node, rx_node) = mpsc::channel();
         let (sender_announce, rx_announce) = mpsc::channel();
         let arc_self = Arc::new(Mutex::new(self));
         let j = sender_node.clone();
         let tmp = arc_self.clone();
         let handle_join = thread::spawn(move || {
-            let mut local:Vec<String> = vec![];
+            let mut local: Vec<String> = vec![];
             {
                 let d = tmp.lock().unwrap();
-                for s in d.bootstraps.iter(){
+                for s in d.bootstraps.iter() {
                     local.push(s.to_string());
                 }
             }
@@ -287,15 +285,17 @@ impl RustDHT {
 
                     if let Ok(addr) = net::SocketAddrV4::from_str(n.addr.as_ref()) {
                         if let Ok(dat) = q.to_bencode().to_bytes() {
-                            local.send(dat.as_ref(), net::SocketAddr::V4(addr))
+                            local.conn.send_to(dat.as_ref(), net::SocketAddr::V4(addr));
                         }
                     }
                 }
             }
         });
-        handle_listen.join();
-        handle_join.join();
-        handle_mk_friends.join();
+        let mut h = vec![];
+        h.push(handle_join);
+        h.push(handle_listen);
+        h.push(handle_mk_friends);
+        return (h, rx_announce);
     }
 
     fn on_message(&mut self, dat: Vec<u8>, addr: net::SocketAddr, tx_node: &mpsc::Sender<Node>, tx_announce: &mpsc::Sender<Announce>) {
@@ -355,10 +355,6 @@ impl RustDHT {
         h.digest().to_string()
     }
 
-    fn send(&self, dat: &[u8], to: net::SocketAddr) {
-        self.conn.send_to(dat, to);
-    }
-
     fn find_node(&self, to: String, target: NodeID) {
         let mut m = BTreeMap::new();
         m.insert("id".to_string(), vec2str(neighbour_id(target, &self.local_id)));
@@ -367,7 +363,7 @@ impl RustDHT {
 
         if let Ok(addr) = net::SocketAddrV4::from_str(to.as_ref()) {
             if let Ok(dat) = q.to_bencode().to_bytes() {
-                self.send(dat.as_ref(), net::SocketAddr::V4(addr))
+                let _ = self.conn.send_to(dat.as_ref(), net::SocketAddr::V4(addr));
             }
         }
     }
@@ -401,7 +397,7 @@ impl RustDHT {
         m.insert("token".to_string(), self.gen_token(from));
         let r = make_reply(t_str, &m);
         if let Ok(dat) = r.to_bencode().to_bytes() {
-            self.send(dat.as_ref(), from)
+            let _ = self.conn.send_to(dat.as_ref(), from);
         }
     }
 
@@ -434,7 +430,7 @@ impl RustDHT {
                     info_hash: hash.to_vec(),
                     info_hash_hex: hex(hash.to_vec()),
                 };
-                tx.send(a);
+                let _ = tx.send(a);
             }
         }
     }
@@ -452,7 +448,7 @@ fn get_now_millis() -> u64 {
 
 static CHARS: &'static [u8] = b"0123456789abcdef";
 
-fn hex(dat: Vec<u8>) -> String {
+pub fn hex(dat: Vec<u8>) -> String {
     let mut v = Vec::with_capacity(dat.len() * 2);
     for &byte in dat.iter() {
         v.push(CHARS[(byte >> 4) as usize]);
