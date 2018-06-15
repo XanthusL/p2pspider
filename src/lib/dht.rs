@@ -32,9 +32,9 @@ pub struct Node {
 pub struct Announce {
     raw: BTreeMap<ByteString, Bencode>,
     from: net::SocketAddr,
-    peer: net::SocketAddr,
+    pub peer: net::SocketAddr,
     info_hash: Vec<u8>,
-    info_hash_hex: String,
+    pub info_hash_hex: String,
 }
 
 
