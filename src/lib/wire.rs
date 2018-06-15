@@ -8,6 +8,7 @@ use self::bencode::util::ByteString;
 use self::byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
 use std;
 use std::collections::BTreeMap;
+use std::fmt;
 use std::io::Read;
 use std::io::Write;
 use std::net;
@@ -236,5 +237,77 @@ impl Wire {
             self.request_pieces(i);
         }
         Ok(())
+    }
+}
+
+pub fn parse_data(meta: Vec<u8>, hash: String) -> Result<Torrent, ()> {
+    let ben = bencode::from_vec(meta)?;
+    let mut torrent = Torrent { hash: hash, name: String::new(), length: 0, files: Vec::new() };
+    if let Bencode::Dict(dict) = ben {
+        if let Some(Bencode::ByteString(d)) = dict.get(&ByteString::from_str("name.utf-8")) {
+            torrent.name = String::from_utf8(d.to_vec()).unwrap_or_default();
+        } else if let Some(Bencode::ByteString(d)) = dict.get(&ByteString::from_str("name")) {
+            torrent.name = String::from_utf8(d.to_vec()).unwrap_or_default();
+        }
+        if let Some(Bencode::Number(l)) = dict.get(&ByteString::from_str("length")) {
+            torrent.length = *l;
+        }
+        let mut total: i64 = 0;
+        if let Some(Bencode::List(list)) = dict.get(&ByteString::from_str("files")) {
+            for f in list {
+                // todo
+                if let Some(Bencode::Dict(f_dict)) = f {
+                    let mut fullname = String::new();
+                    let mut size: i64 = 0;
+                    let mut path: Vec<Bencode> = vec![];
+                    if let Some(Bencode::List(inter)) = f_dict.get(&ByteString::from_str("path.urf-8")) {
+                        path = inter;
+                    } else if let Some(Bencode::List(inter)) = f_dict.get(&ByteString::from_str("path")) {
+                        path = inter;
+                    }
+                    let mut first = true;
+                    for p in path {
+                        if first {
+                            fullname.push_str(p.to_string().as_ref());
+                            first = false;
+                        } else {
+                            fullname.push('/');
+                            fullname.push_str(p.to_string().as_ref());
+                        }
+                    }
+                    if let Some(Bencode::Number(ref i)) = f_dict.get(&ByteString::from_str("length")) {
+                        total += i;
+                        size = i;
+                    }
+                    torrent.files.push(File { name: fullname, length: size });
+                }
+            }
+        }
+
+        if torrent.length == 0 {
+            torrent.length = total;
+        }
+        if torrent.files.len() == 0 {
+            torrent.files.push(File { name: torrent.name.clone(), length: torrent.length });
+        }
+        Ok(torrent)
+    }
+}
+
+struct Torrent {
+    hash: String,
+    name: String,
+    length: i64,
+    files: Vec<File>,
+}
+
+struct File {
+    name: String,
+    length: i64,
+}
+
+impl fmt::Display for Torrent {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f,"link: magnet:?xt=urn:btih:{}\nname {}\nsize: {}\nfile: {}\n", self.hash, self.name, self.length, self.files.len())
     }
 }

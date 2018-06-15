@@ -1,6 +1,10 @@
+extern crate bencode;
 extern crate rand;
 
 use rand::prelude::*;
+use self::bencode::{Bencode, FromBencode, ToBencode};
+use self::bencode::util::ByteString;
+use std::io::Write;
 
 mod lib;
 
@@ -26,81 +30,23 @@ fn run() {
                     // todo add announce.peer to block list
                     vec![]
                 });
-                // todo save data to announce.info_hash_hex.torrent
-                // benCode{"info":data}
-                // todo parse data
+                let mut dict = bencode::DictMap::new();
+                if let Ok(ben) = bencode::from_vec(data) {
+                    dict.insert(ByteString::from_str("info"), ben);
+                    let bytes = Bencode::Dict(dict).to_bytes().unwrap_or(vec![]);
+                    save(announce.info_hash_hex, bytes.to_vec());
+                    if let Ok(t) = lib::wire::parse_data(bytes.to_vec(), announce.info_hash_hex) {
+                        print!("{}", t)
+                    }
+                }
             }
             Err(_) => continue,
         }
     }
 }
-/*
-https://github.com/fanpei91/p2pspider
 
-type torrent struct {
-	infohashHex string
-	name        string
-	length      int64
-	files       []*tfile
+fn save(name: String, dat: Vec<u8>) {
+    if dat.len() == 0 { return; }
+    let mut f = std::fs::File::create(name.as_str() + ".torrent")?;
+    f.write_all(dat.as_ref())?;
 }
-
-func (t *torrent) String() string {
-	return fmt.Sprintf(
-		"link: %s\nname: %s\nsize: %d\nfile: %d\n",
-		fmt.Sprintf("magnet:?xt=urn:btih:%s", t.infohashHex),
-		t.name,
-		t.length,
-		len(t.files),
-	)
-}
-
-func newTorrent(meta []byte, infohashHex string) (*torrent, error) {
-	dict, err := bencode.Decode(bytes.NewBuffer(meta))
-	if err != nil {
-		return nil, err
-	}
-	t := &torrent{infohashHex: infohashHex}
-	if name, ok := dict["name.utf-8"].(string); ok {
-		t.name = name
-	} else if name, ok := dict["name"].(string); ok {
-		t.name = name
-	}
-	if length, ok := dict["length"].(int64); ok {
-		t.length = length
-	}
-	var total int64
-	if files, ok := dict["files"].([]interface{}); ok {
-		for _, file := range files {
-			var filename string
-			var filelength int64
-			if f, ok := file.(map[string]interface{}); ok {
-				if inter, ok := f["path.utf-8"].([]interface{}); ok {
-					path := make([]string, len(inter))
-					for i, v := range inter {
-						path[i] = fmt.Sprint(v)
-					}
-					filename = strings.Join(path, "/")
-				} else if inter, ok := f["path"].([]interface{}); ok {
-					path := make([]string, len(inter))
-					for i, v := range inter {
-						path[i] = fmt.Sprint(v)
-					}
-					filename = strings.Join(path, "/")
-				}
-				if length, ok := f["length"].(int64); ok {
-					filelength = length
-					total += filelength
-				}
-				t.files = append(t.files, &tfile{name: filename, length: filelength})
-			}
-		}
-	}
-	if t.length == 0 {
-		t.length = total
-	}
-	if len(t.files) == 0 {
-		t.files = append(t.files, &tfile{name: t.name, length: t.length})
-	}
-	return t, nil
-}
-*/
