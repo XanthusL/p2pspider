@@ -94,21 +94,22 @@ impl FromBencode for Query {
                     return Err("a not found".to_string());
                 }
                 if let Some(t) = m.get(&ByteString::from_str("t")) {
-                    String::from_bencode(t).map(|t| { q.t = t; });
+                    let _ = String::from_bencode(t).map(|t| { q.t = t; });
                 } else {
                     return Err("t not found".to_string());
                 }
                 match m.get(&ByteString::from_str("y")) {
                     Some(y) => {
-                        String::from_bencode(y)
-                            .map(|y| { q.y = y; });
+                        let _=String::from_bencode(y).map(|y| { q.y = y; });
                     }
                     None => return Err("y not found".to_string()),
                 };
                 match m.get(&ByteString::from_str("q")) {
                     Some(field_q) => {
-                        String::from_bencode(field_q)
-                            .map(|field_q| { q.q = field_q; });
+                        q.q = String::from_bencode(field_q).unwrap_or_else(|e|{
+                            println!("bencode to struct, q");
+                            "".to_string()
+                        });
                     }
                     None => return Err("q not found".to_string()),
                 };
@@ -254,7 +255,9 @@ impl RustDHT {
                 }
             }
             for s in local {
-                j.send(Node { addr: s.to_string(), id: vec2str(rand_bytes(20)) });
+                if let Err(e) = j.send(Node { addr: s.to_string(), id: vec2str(rand_bytes(20)) }){
+                    println!("join:{}",e.to_string())
+                }
             }
         });
 
@@ -285,7 +288,10 @@ impl RustDHT {
 
                     if let Ok(addr) = net::SocketAddrV4::from_str(n.addr.as_ref()) {
                         if let Ok(dat) = q.to_bencode().to_bytes() {
-                            local.conn.send_to(dat.as_ref(), net::SocketAddr::V4(addr));
+                            let result = local.conn.send_to(dat.as_ref(), net::SocketAddr::V4(addr));
+                            if let Err(e)=result{
+                                println!("make friends:{}",e.to_string())
+                            }
                         }
                     }
                 }
@@ -334,7 +340,7 @@ impl RustDHT {
                                                 continue;
                                             }
                                             self.node_last_send_time = get_now_millis();
-                                            tx_node.send(n.clone());
+                                            let _=tx_node.send(n.clone());
                                         }
                                     }
                                 }

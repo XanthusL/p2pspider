@@ -25,7 +25,7 @@ fn run() {
                 // todo
                 // if is_exist(announce.info_hash_hex){continue}
                 // if in_block_list(announce.info_hash_hex){continue}
-                let mut peer = lib::wire::new(announce.info_hash_hex, announce.peer.to_string()).unwrap();
+                let mut peer = lib::wire::new(announce.info_hash_hex.clone(), announce.peer.to_string()).unwrap();
                 let data = peer.fetch().unwrap_or_else(|e| {
                     // todo add announce.peer to block list
                     vec![]
@@ -34,8 +34,11 @@ fn run() {
                 if let Ok(ben) = bencode::from_vec(data) {
                     dict.insert(ByteString::from_str("info"), ben);
                     let bytes = Bencode::Dict(dict).to_bytes().unwrap_or(vec![]);
-                    save(announce.info_hash_hex, bytes.to_vec());
-                    if let Ok(t) = lib::wire::parse_data(bytes.to_vec(), announce.info_hash_hex) {
+                    let _ = save(announce.info_hash_hex.clone(), bytes.to_vec()).or_else(|e| {
+                        println!("{}", e.to_string());
+                        Err(e)
+                    });
+                    if let Ok(t) = lib::wire::parse_data(bytes.to_vec(), announce.info_hash_hex.clone()) {
                         print!("{}", t)
                     }
                 }
@@ -45,8 +48,10 @@ fn run() {
     }
 }
 
-fn save(name: String, dat: Vec<u8>) {
-    if dat.len() == 0 { return; }
-    let mut f = std::fs::File::create(name.as_str() + ".torrent")?;
+fn save(name: String, dat: Vec<u8>) -> Result<(), std::io::Error> {
+    if dat.len() == 0 { return Ok(()); }
+
+    let mut f = std::fs::File::create(format!("{}.torrent", name))?;
     f.write_all(dat.as_ref())?;
+    Ok(())
 }

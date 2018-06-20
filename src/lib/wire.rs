@@ -241,7 +241,7 @@ impl Wire {
 }
 
 pub fn parse_data(meta: Vec<u8>, hash: String) -> Result<Torrent, ()> {
-    let ben = bencode::from_vec(meta)?;
+    let ben = bencode::from_vec(meta).or_else(|e|{Err(())})?;
     let mut torrent = Torrent { hash: hash, name: String::new(), length: 0, files: Vec::new() };
     if let Bencode::Dict(dict) = ben {
         if let Some(Bencode::ByteString(d)) = dict.get(&ByteString::from_str("name.utf-8")) {
@@ -256,14 +256,14 @@ pub fn parse_data(meta: Vec<u8>, hash: String) -> Result<Torrent, ()> {
         if let Some(Bencode::List(list)) = dict.get(&ByteString::from_str("files")) {
             for f in list {
                 // todo
-                if let Some(Bencode::Dict(f_dict)) = f {
+                if let Bencode::Dict(f_dict) = f {
                     let mut fullname = String::new();
                     let mut size: i64 = 0;
                     let mut path: Vec<Bencode> = vec![];
                     if let Some(Bencode::List(inter)) = f_dict.get(&ByteString::from_str("path.urf-8")) {
-                        path = inter;
+                        path = inter.to_vec();
                     } else if let Some(Bencode::List(inter)) = f_dict.get(&ByteString::from_str("path")) {
-                        path = inter;
+                        path = inter.to_vec();
                     }
                     let mut first = true;
                     for p in path {
@@ -276,8 +276,8 @@ pub fn parse_data(meta: Vec<u8>, hash: String) -> Result<Torrent, ()> {
                         }
                     }
                     if let Some(Bencode::Number(ref i)) = f_dict.get(&ByteString::from_str("length")) {
-                        total += i;
-                        size = i;
+                        total += *i;
+                        size = *i;
                     }
                     torrent.files.push(File { name: fullname, length: size });
                 }
@@ -290,11 +290,12 @@ pub fn parse_data(meta: Vec<u8>, hash: String) -> Result<Torrent, ()> {
         if torrent.files.len() == 0 {
             torrent.files.push(File { name: torrent.name.clone(), length: torrent.length });
         }
-        Ok(torrent)
+        return Ok(torrent);
     }
+    Err(())
 }
 
-struct Torrent {
+pub struct Torrent {
     hash: String,
     name: String,
     length: i64,
